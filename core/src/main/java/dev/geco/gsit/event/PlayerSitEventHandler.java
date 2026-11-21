@@ -31,6 +31,7 @@ public class PlayerSitEventHandler implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void playerToggleSneakEvent(PlayerToggleSneakEvent event) {
+        if(cn.jiujiu.gsit.carry.CarryModule.blockInteraction(event.getPlayer())) return;
         Player player = event.getPlayer();
         if(!gSitMain.getConfigService().PS_SNEAK_EJECTS || !event.isSneaking() || player.isFlying() || player.getVehicle() != null || gSitMain.getPlayerSitService().getPreventDismountStackPlayers().contains(player) || player.getPassengers().isEmpty()) return;
         gSitMain.getPlayerSitService().stopPlayerSit(player, StopReason.KICKED, true, false, true);
@@ -58,6 +59,9 @@ public class PlayerSitEventHandler implements Listener {
     public void playerInteractAtEntityEventHighest(PlayerInteractAtEntityEvent event) { if(gSitMain.getPlotSquaredLink() == null) handlePlayerInteractAtEntityEvent(event); }
 
     private void handlePlayerInteractAtEntityEvent(PlayerInteractAtEntityEvent event) {
+        if(!cn.jiujiu.gsit.carry.CarryModule.owns(event.getPlayer())
+                || !cn.jiujiu.gsit.carry.CarryModule.owns(event.getRightClicked())
+                || cn.jiujiu.gsit.carry.CarryModule.blockInteraction(event.getPlayer())) return;
 
         Entity rightClicked = event.getRightClicked();
         if(!(rightClicked instanceof Player target)) return;
@@ -105,6 +109,9 @@ public class PlayerSitEventHandler implements Listener {
     public void playerInteractEntityEventHighest(PlayerInteractEntityEvent event) { if(gSitMain.getPlotSquaredLink() == null) handlePlayerInteractEntityEvent(event); }
 
     private void handlePlayerInteractEntityEvent(PlayerInteractEntityEvent event) {
+        if(!cn.jiujiu.gsit.carry.CarryModule.owns(event.getPlayer())
+                || !cn.jiujiu.gsit.carry.CarryModule.owns(event.getRightClicked())
+                || cn.jiujiu.gsit.carry.CarryModule.blockInteraction(event.getPlayer())) return;
 
         Entity rightClicked = event.getRightClicked();
         if(!(rightClicked instanceof Player target)) return;
