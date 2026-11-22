@@ -4,7 +4,7 @@ enabled: true
 menu:
   # /sq、/jiujiuqi 等无参数命令打开个人互动菜单；关闭后仍可用 on/off。
   enabled: true
-  # JiuJiuGUI/menus 下的菜单文件名，不含.yml；1～48位字母、数字、下划线或短横线。
+  # JiuJiuLib/gui/menus 下的菜单文件名，不含.yml；1～48位字母、数字、下划线或短横线。
   id: interaction
 pickup:
   # 生物抱起开关；主手与副手都必须为空。

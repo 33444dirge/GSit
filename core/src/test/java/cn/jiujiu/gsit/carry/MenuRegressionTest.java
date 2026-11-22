@@ -36,8 +36,8 @@ final class MenuRegressionTest {
         Fixture() throws Exception {
             when(parent.getServer()).thenReturn(server); when(server.getPluginManager()).thenReturn(plugins);
             when(parent.getToggleService()).thenReturn(toggles); when(parent.getPlayerSitService()).thenReturn(sit);
-            when(plugins.getPlugin("JiuJiuGUI")).thenReturn(gui); when(gui.isEnabled()).thenReturn(true);
-            when(server.getPluginCommand("jiujiugui:jjgui")).thenReturn(entry); when(entry.getPlugin()).thenReturn(gui);
+            when(plugins.getPlugin("JiuJiuLib")).thenReturn(gui); when(gui.isEnabled()).thenReturn(true);
+            when(server.getPluginCommand("jiujiulib:jjgui")).thenReturn(entry); when(entry.getPlugin()).thenReturn(gui);
             when(f.actor.performCommand(anyString())).thenReturn(true);
             when(toggles.canPlayerUsePlayerSit(any())).thenReturn(true);
             when(toggles.canPlayerUsePlayerSit(f.actor.getUniqueId())).thenAnswer(i -> accepting.get());
@@ -64,24 +64,24 @@ final class MenuRegressionTest {
         checks=0;
         for (String alias : List.of("sq","jiujiuqi","carry","baobao")) {
             var x=new Fixture(); x.accepting.set(false); x.command(alias);
-            verify(x.f.actor).performCommand("jiujiugui:jjgui open interaction");
+            verify(x.f.actor).performCommand("jiujiulib:jjgui open interaction");
             verify(x.toggles,never()).trySetPlayerCanUsePlayerSit(any(),anyBoolean());
             check(!x.accepting.get(),"opening "+alias+" preserves opt-out");
         }
         var x=new Fixture(); x.command("sq","menu");
-        verify(x.f.actor).performCommand("jiujiugui:jjgui open interaction");
+        verify(x.f.actor).performCommand("jiujiulib:jjgui open interaction");
         check(x.f.plugin.onTabComplete(x.f.actor,mock(Command.class),"sq",new String[]{"m"}).equals(List.of("menu")),"menu tab completion");
 
         x=new Fixture(); x.f.settings.yaml.set("menu.id","personal_interactions");
         field(x.f.plugin,"settings",new Settings(x.f.settings.yaml,w -> {})); x.command("sq");
-        verify(x.f.actor).performCommand("jiujiugui:jjgui open personal_interactions"); check(true,"configured menu ID routed");
+        verify(x.f.actor).performCommand("jiujiulib:jjgui open personal_interactions"); check(true,"configured menu ID routed");
 
         for (String failure : List.of("missing-plugin","disabled-plugin","missing-command","wrong-owner","false-result","menu-disabled")) {
             x=new Fixture();
             switch(failure) {
-                case "missing-plugin" -> when(x.plugins.getPlugin("JiuJiuGUI")).thenReturn(null);
+                case "missing-plugin" -> when(x.plugins.getPlugin("JiuJiuLib")).thenReturn(null);
                 case "disabled-plugin" -> when(x.gui.isEnabled()).thenReturn(false);
-                case "missing-command" -> when(x.server.getPluginCommand("jiujiugui:jjgui")).thenReturn(null);
+                case "missing-command" -> when(x.server.getPluginCommand("jiujiulib:jjgui")).thenReturn(null);
                 case "wrong-owner" -> when(x.entry.getPlugin()).thenReturn(mock(Plugin.class));
                 case "false-result" -> when(x.f.actor.performCommand(anyString())).thenReturn(false);
                 case "menu-disabled" -> {x.f.settings.yaml.set("menu.enabled",false);field(x.f.plugin,"settings",new Settings(x.f.settings.yaml,w -> {}));}
@@ -115,7 +115,7 @@ final class MenuRegressionTest {
         x=new Fixture(); when(x.f.scheduler.owns(x.f.actor)).thenReturn(false); x.command("sq");
         verify(x.f.actor,never()).performCommand(anyString()); check(x.f.tasks.size()==1,"foreign context defers to entity scheduler");
         when(x.f.scheduler.owns(x.f.actor)).thenReturn(true); x.f.runTasks();
-        verify(x.f.actor).performCommand("jiujiugui:jjgui open interaction"); check(true,"deferred route runs in owner context");
+        verify(x.f.actor).performCommand("jiujiulib:jjgui open interaction"); check(true,"deferred route runs in owner context");
 
         x=new Fixture(); when(x.f.scheduler.owns(x.f.actor)).thenReturn(false); x.command("sq"); field(x.f.plugin,"active",false);
         when(x.f.scheduler.owns(x.f.actor)).thenReturn(true); x.f.runTasks();

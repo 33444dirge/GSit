@@ -7,7 +7,7 @@ main: ${main}
 api-version: 1.16
 folia-supported: true
 source: ${source}
-softdepend: [GriefPrevention, PlaceholderAPI, PlotSquared, WorldGuard, JiuJiuGUI]
+softdepend: [GriefPrevention, PlaceholderAPI, PlotSquared, WorldGuard, JiuJiuLib]
 
 commands:
   dongzuo:

@@ -326,10 +326,10 @@ public final class CarryModule implements Listener, CommandExecutor, TabComplete
     }
     private void openMenu(Player player) {
         if (!settings.menuEnabled) { message(player, "menu-unavailable"); return; }
-        var gui = plugin.getServer().getPluginManager().getPlugin("JiuJiuGUI");
-        PluginCommand entry = plugin.getServer().getPluginCommand("jiujiugui:jjgui");
+        var gui = plugin.getServer().getPluginManager().getPlugin("JiuJiuLib");
+        PluginCommand entry = plugin.getServer().getPluginCommand("jiujiulib:jjgui");
         if (gui == null || !gui.isEnabled() || entry == null || entry.getPlugin() != gui
-                || !player.performCommand("jiujiugui:jjgui open " + settings.menuId)) {
+                || !player.performCommand("jiujiulib:jjgui open " + settings.menuId)) {
             message(player, "menu-unavailable");
         }
     }

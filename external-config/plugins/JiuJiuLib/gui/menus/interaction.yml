@@ -56,7 +56,7 @@ buttons:
     lore: []
     action:
       type: player_command
-      value: jiujiugui:jjfun
+      value: jiujiulib:jjfun
   close:
     enabled: true
     slots: [26]
