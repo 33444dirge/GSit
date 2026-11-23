@@ -30,6 +30,7 @@ public final class CarryModule implements Listener, CommandExecutor, TabComplete
     private volatile Settings settings;
     private final InteractionGate inputs = new InteractionGate();
     private final AtomicBoolean loading = new AtomicBoolean();
+    private final AtomicBoolean inputDisabled = new AtomicBoolean();
     private final Set<UUID> positionSync = ConcurrentHashMap.newKeySet();
     private final Set<UUID> teleportDetach = ConcurrentHashMap.newKeySet();
     private final List<Listener> bridges = new ArrayList<>();
@@ -99,7 +100,7 @@ public final class CarryModule implements Listener, CommandExecutor, TabComplete
         if (m == null || !m.active || !m.teleportSafe() || !m.scheduler.owns(rider) || !m.scheduler.owns(target)) return false;
         if (rider.isSneaking() || m.busy(rider) || m.busy(target)
                 || m.mountProtected(rider.getUniqueId()) || m.mountProtected(target.getUniqueId())) return false;
-        return m.accepts(rider) && m.accepts(target);
+        return m.acceptsRide(target);
     }
     public static boolean blockInteraction(Player player) {
         CarryModule m = instance;
@@ -129,7 +130,31 @@ public final class CarryModule implements Listener, CommandExecutor, TabComplete
         return p.getPersistentDataContainer().has(migrated) || old == null || old != 0;
     }
     boolean accepts(Player p) {
+        return acceptsRide(p) && acceptsCarry(p);
+    }
+    public boolean acceptsRide(Player p) {
         return legacyAllows(p) && plugin.getToggleService().canPlayerUsePlayerSit(p.getUniqueId());
+    }
+    public boolean acceptsCarry(Player p) {
+        return legacyAllows(p) && plugin.getToggleService().canPlayerBeCarried(p.getUniqueId());
+    }
+    public static boolean incoming(Player p, boolean carry) {
+        CarryModule m = instance;
+        return m != null && m.active && m.scheduler.owns(p) && (carry ? m.acceptsCarry(p) : m.acceptsRide(p));
+    }
+    public static boolean setIncoming(Player p, boolean carry, boolean value) {
+        CarryModule m = instance;
+        if (m == null || !m.active || !m.scheduler.owns(p)) return false;
+        m.migratePreference(p);
+        // A legacy opt-out must migrate both values before either new switch may be enabled.
+        if (!p.getPersistentDataContainer().has(m.migrated)) return false;
+        boolean saved = carry ? m.plugin.getToggleService().trySetPlayerCanBeCarried(p.getUniqueId(), value)
+                : m.plugin.getToggleService().trySetPlayerCanUsePlayerSit(p.getUniqueId(), value);
+        if (saved && !value) {
+            if (carry) m.service.down(p);
+            else m.plugin.getPlayerSitService().stopPlayerSit(p, StopReason.PLUGIN, true, false, true);
+        }
+        return saved;
     }
     private void migratePreference(Player p) {
         migratePreference(p, 0);
@@ -144,12 +169,12 @@ public final class CarryModule implements Listener, CommandExecutor, TabComplete
                 if (attempt < 200) scheduler.later(p, () -> migratePreference(p, attempt + 1), () -> {});
                 return;
             }
-            if (!plugin.getToggleService().trySetPlayerCanUsePlayerSit(p.getUniqueId(), false)) return;
+            if (!plugin.getToggleService().trySetPlayerInteraction(p.getUniqueId(), false)) return;
         }
         p.getPersistentDataContainer().set(migrated, PersistentDataType.BYTE, (byte)1);
     }
     private void acceptance(Player p, boolean value) {
-        if (!plugin.getToggleService().trySetPlayerCanUsePlayerSit(p.getUniqueId(), value)) { message(p, "storage-wait"); return; }
+        if (!plugin.getToggleService().trySetPlayerInteraction(p.getUniqueId(), value)) { message(p, "storage-wait"); return; }
         p.getPersistentDataContainer().set(migrated, PersistentDataType.BYTE, (byte)1);
         if (!value) { service.endParticipant(p); plugin.getPlayerSitService().stopPlayerSit(p, StopReason.PLUGIN); }
         message(p, value ? "player-on" : "player-off");
@@ -158,6 +183,29 @@ public final class CarryModule implements Listener, CommandExecutor, TabComplete
     void protectMounts(UUID id) { inputs.protectMounts(id, clock.getAsLong(), settings.remountGuardMs); }
     boolean mountProtected(UUID id) { return inputs.mountProtected(id, clock.getAsLong()); }
     void holdingHint(Player p) { /* Successful pickup already sends one short hint. */ }
+    CarryInput createInput(Player p) {
+        if (inputDisabled.get() || !settings.yaml.getBoolean("controls.air-right-click", true)) return null;
+        try {
+            return plugin.getEntityUtil().createCarryInput(p);
+        } catch (RuntimeException failure) {
+            // An optional input helper must not roll back an otherwise successful native carry.
+            // The adapter rolls back any already-sent client target before throwing.
+            if (inputDisabled.compareAndSet(false, true)) getLogger().log(java.util.logging.Level.WARNING,
+                    "空气右键输入初始化失败，本次启动已停用此输入；抱起继续可用，仍可右键方块/实体抛出或双击Shift放下。", failure);
+            return null;
+        }
+    }
+
+    @EventHandler
+    public void clientInput(com.destroystokyo.paper.event.player.PlayerUseUnknownEntityEvent event) {
+        Player p = event.getPlayer();
+        if (!active || !scheduler.owns(p) || event.isAttack() || event.getHand() != EquipmentSlot.HAND) return;
+        CarryService.Session s = service.carriers.get(p.getUniqueId());
+        if (s == null || s.closed.get() || s.exiting) return;
+        CarryInput input = s.input.get();
+        if (input == null || input.entityId() != event.getEntityId()) return;
+        if (!duplicate(p)) { pickupConsumed(p); service.throwHeld(p); }
+    }
     void beginPositionSync(Player p) { positionSync.add(p.getUniqueId()); }
     void endPositionSync(UUID id) { positionSync.remove(id); }
 
@@ -246,6 +294,28 @@ public final class CarryModule implements Listener, CommandExecutor, TabComplete
         }
     }
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void retainCarriedMob(EntityDismountEvent event) {
+        if (!active || !scheduler.owns(event.getEntity()) || !scheduler.owns(event.getDismounted())) return;
+        CarryService.Session s = service.carried.get(event.getEntity().getUniqueId());
+        if (s == null || s.players || s.closed.get() || s.exiting || event.getDismounted() != s.player
+                || !s.mob.isValid() || s.mob.isDead() || !s.player.isOnline() || s.player.isDead()
+                || !settings.enabled || !settings.yaml.getBoolean("pickup.enabled", true)
+                || teleportDetach.contains(s.playerId)) return;
+        boolean protect = settings.yaml.getBoolean("safety.prevent-mob-self-dismount", true);
+        if (s.unexpectedDismountLogged.compareAndSet(false, true)) {
+            // One bounded diagnostic per session, captured at the actual dismount call site.
+            String cause = StackWalker.getInstance().walk(frames -> frames
+                    .filter(f -> !f.getClassName().startsWith("cn.jiujiu.gsit.")
+                            && !f.getClassName().startsWith("java.")
+                            && !f.getClassName().startsWith("org.bukkit.plugin.")
+                            && !f.getClassName().startsWith("io.papermc.paper.plugin."))
+                    .limit(24).map(Object::toString).collect(java.util.stream.Collectors.joining(" <- ")));
+            getLogger().warning("携带生物意外下乘：" + s.mob.getType() + " " + s.mobId
+                    + "，保护=" + protect + "，允许取消=" + event.isCancellable() + "，来源=" + cause);
+        }
+        if (protect) event.setCancelled(true);
+    }
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void safetyDismount(EntityDismountEvent event) {
         // The native pre-teleport event is informational. A narrowly scoped safety detach must finish before it returns.
         if (teleportDetach.isEmpty() || !scheduler.owns(event.getEntity()) || !scheduler.owns(event.getDismounted())) return;
@@ -314,6 +384,14 @@ public final class CarryModule implements Listener, CommandExecutor, TabComplete
         if (!settings.playerPermission(p, "menu")) { message(p, "no-permission"); return true; }
         switch (action) {
             case "menu" -> openMenu(p);
+            case "ride", "pickup" -> {
+                boolean carry = action.equals("pickup");
+                String setting = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "toggle";
+                if (!Set.of("on", "off", "toggle").contains(setting)) { message(p,"help"); break; }
+                boolean value = setting.equals("on") || setting.equals("toggle") && !incoming(p,carry);
+                if (!setIncoming(p,carry,value)) message(p,"storage-wait");
+                else message(p,(carry ? "receive-carry-" : "receive-ride-")+(value ? "on" : "off"));
+            }
             case "on", "off" -> acceptance(p, action.equals("on"));
             case "toggle" -> acceptance(p, !accepts(p));
             case "drop" -> service.drop(p, "put-down");
@@ -346,8 +424,10 @@ public final class CarryModule implements Listener, CommandExecutor, TabComplete
         });
     }
     @Override public List<String> onTabComplete(CommandSender s, Command c, String label, String[] args) {
+        if (args.length == 2 && Set.of("ride","pickup").contains(args[0].toLowerCase(Locale.ROOT)))
+            return List.of("on","off","toggle").stream().filter(v->v.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         if (args.length != 1) return List.of();
-        return List.of("menu", "help", "on", "off", "toggle", "drop", "down", "status", "reload").stream()
+        return List.of("menu", "help", "on", "off", "toggle", "ride", "pickup", "drop", "down", "status", "reload").stream()
                 .filter(v -> v.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
     }
 }

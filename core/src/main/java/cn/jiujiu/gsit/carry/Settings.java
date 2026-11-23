@@ -24,7 +24,7 @@ final class Settings {
         for (String key : List.of("enabled", "pickup.enabled", "pickup.require-sneaking", "pickup.only-own-tamed-pets",
                 "players.enabled", "players.carry", "players.throw", "players.resync-after-dismount", "players.empty-hand-only",
                 "players.permissions.enabled", "throw.enabled", "safety.detach-before-commands", "safety.detach-before-menus",
-                "safety.block-carried-attacks", "safety.release-on-carrier-damage", "permissions.per-entity", "menu.enabled")) {
+                "safety.block-carried-attacks", "safety.release-on-carrier-damage", "safety.prevent-mob-self-dismount", "permissions.per-entity", "menu.enabled", "controls.air-right-click")) {
             if (yaml.contains(key) && !yaml.isBoolean(key)) throw new IllegalArgumentException(key + " 必须是 true 或 false，不能加引号");
         }
         enabled = yaml.getBoolean("enabled", true);
@@ -91,6 +91,15 @@ final class Settings {
     }
 
     String text(String key) {
+        String incoming = switch (key) {
+            case "type-denied" -> "&e配置禁止抱起这种生物。";
+            case "receive-ride-on" -> "&b允许别人骑我：&a开启";
+            case "receive-ride-off" -> "&b允许别人骑我：&7关闭";
+            case "receive-carry-on" -> "&b允许别人抱起我：&a开启";
+            case "receive-carry-off" -> "&b允许别人抱起我：&7关闭";
+            default -> null;
+        };
+        if (incoming != null) return yaml.getString("messages." + key, incoming);
         if (key.equals("mount-protected")) return yaml.getString("messages.mount-protected", "");
         if (key.equals("menu-unavailable")) return yaml.getString("messages.menu-unavailable", "&e菜单暂不可用，可用 /sq on 或 /sq off。");
         return yaml.getString("messages." + key, key.equals("sync-failed")

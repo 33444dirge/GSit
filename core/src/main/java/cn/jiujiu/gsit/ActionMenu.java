@@ -40,6 +40,10 @@ public final class ActionMenu implements Listener, CommandExecutor {
         this.plugin = plugin;
         if (!new File(plugin.getDataFolder(), "jiujiu-menu.yml").exists()) plugin.saveResource("jiujiu-menu.yml", false);
         config = YamlConfiguration.loadConfiguration(new File(plugin.getDataFolder(), "jiujiu-menu.yml"));
+        // Supply new buttons without replacing the server's existing menu/database configuration.
+        try (InputStream defaults = plugin.getResource("jiujiu-menu.yml")) {
+            if (defaults != null) mergeMissing(config, YamlConfiguration.loadConfiguration(new InputStreamReader(defaults, java.nio.charset.StandardCharsets.UTF_8)));
+        }
         data = plugin.getDataFolder().toPath().resolve("jiujiu-auto.properties");
         if (Files.exists(data)) {
             Properties p = new Properties();
@@ -53,7 +57,7 @@ public final class ActionMenu implements Listener, CommandExecutor {
         scheduler = new Scheduler(plugin);
         int size = rows() * 9;
         Set<Integer> used = new HashSet<>();
-        for (String key : List.of("sit","lay","belly","crawl","spin","legsup","auto-off","auto-on","close")) {
+        for (String key : List.of("sit","lay","belly","crawl","spin","legsup","auto-off","auto-on","close","receive-ride","receive-carry")) {
             String path="buttons."+key;
             if (!config.getBoolean(path+".enabled",true)) continue;
             int slot=config.getInt(path+".slot", -1);
@@ -61,6 +65,14 @@ public final class ActionMenu implements Listener, CommandExecutor {
             Material material=material(config.getString(path+".material"),Material.LIGHT_BLUE_DYE);
             buttons.put(key,new Button(slot,material,config.getString(path+".name",key),List.copyOf(config.getStringList(path+".lore"))));
         }
+    }
+    static void mergeMissing(YamlConfiguration config, YamlConfiguration defaults) {
+        // Bukkit getInt/getString(path, fallback) bypass configured defaults. Materialize only
+        // missing leaves in memory; explicit false, custom slots, titles and messages stay intact.
+        defaults.getValues(true).forEach((path, value) -> {
+            if (!(value instanceof org.bukkit.configuration.ConfigurationSection) && !config.contains(path, true))
+                config.set(path, value);
+        });
     }
     public static void enable(GSitMain p) {
         if (!p.isEnabled()) return;
@@ -116,9 +128,16 @@ public final class ActionMenu implements Listener, CommandExecutor {
         ItemStack filler=new ItemStack(material(config.getString("background"),Material.WHITE_STAINED_GLASS_PANE));
         ItemMeta meta=filler.getItemMeta();meta.setDisplayName(" ");filler.setItemMeta(meta);
         for(int i=0;i<view.inventory.getSize();i++) view.inventory.setItem(i,filler);
-        for(Button b:buttons.values()) {
-            ItemStack item=new ItemStack(b.material()); ItemMeta im=item.getItemMeta();
-            im.setDisplayName(color(b.name())); im.setLore(b.lore().stream().map(ActionMenu::color).toList()); item.setItemMeta(im);
+        for(var entry:buttons.entrySet()) {
+            Button b=entry.getValue(); String key=entry.getKey();
+            boolean interaction=key.startsWith("receive-");
+            boolean enabled=interaction && cn.jiujiu.gsit.carry.CarryModule.incoming(p,key.equals("receive-carry"));
+            String state=plugin.getToggleService().isReady() ? config.getString(enabled?"states.on":"states.off",enabled?"&a已开启":"&7已关闭")
+                    : config.getString("states.loading","&e读取中");
+            Material icon=interaction?material(config.getString("buttons."+key+(enabled?".on-material":".off-material")),b.material()):b.material();
+            ItemStack item=new ItemStack(icon); ItemMeta im=item.getItemMeta();
+            im.setDisplayName(color(b.name().replace("{state}",state)));
+            im.setLore(b.lore().stream().map(line->color(line.replace("{state}",state))).toList()); item.setItemMeta(im);
             view.inventory.setItem(b.slot(),item);
         }
         p.openInventory(view.inventory);
@@ -137,6 +156,14 @@ public final class ActionMenu implements Listener, CommandExecutor {
         Inventory inventory=e.getView().getTopInventory();
         scheduler.entity(p,()->{
             if(!active || !p.isOnline() || p.getOpenInventory().getTopInventory()!=inventory) return;
+            if(key.startsWith("receive-")) {
+                if(!allowed(p,config.getString("interaction-permission",""))) { message(p,"denied");return; }
+                boolean carry=key.equals("receive-carry");
+                boolean next=!cn.jiujiu.gsit.carry.CarryModule.incoming(p,carry);
+                if(!cn.jiujiu.gsit.carry.CarryModule.setIncoming(p,carry,next)) { message(p,"storage-wait");return; }
+                message(p,key+(next?"-on":"-off"));
+                open(p);return;
+            }
             p.closeInventory();
             if(key.equals("close"))return;
             if(key.startsWith("auto-")) {

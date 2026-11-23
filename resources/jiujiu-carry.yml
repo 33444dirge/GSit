@@ -37,13 +37,16 @@ players:
   # 玩家下乘后原位异步同步，减少卡视角；不会重新传送已开始回岛的玩家。
   resync-after-dismount: true
   permissions:
-    # true时额外核对以下节点；玩家是否接受互动统一读取GSit个人开关。
+    # true时额外核对以下节点；是否允许被骑/被抱起由各自的GSit个人开关决定。
     enabled: false
     menu: jiujiuqi.use
     carry: jiujiuqi.carry
     receive: jiujiuqi.receive
     throw: jiujiuqi.throw
 controls:
+  # 抱起期间仅给本人发送不可见客户端交互目标，让空手右键空气也能抛出；不生成世界实体或物品。
+  # 默认开启，关闭后仅保留原右键实体/方块输入；修改后 /carry reload，当前携带结束后生效。
+  air-right-click: true
   # 双击Shift放下的间隔150～1500毫秒；乘客单按Shift可自行下来。
   double-shift-ms: 450
   # 抱起后0～2000毫秒内不响应抛出/放下，避免同次输入误触。
@@ -59,6 +62,8 @@ throw:
   horizontal-speed: 1.25
   upward-speed: 0.45
 safety:
+  # 携带有效生物期间阻止非主动下乘；不阻止主动放下、抛出、传送拆乘、死亡与清理。false仅记录意外下乘来源。
+  prevent-mob-self-dismount: true
   # 使用普通命令或菜单前自动下乘，避免核心在乘客状态提前拒绝回岛；互动控制命令除外。
   detach-before-commands: true
   detach-before-menus: true
@@ -80,6 +85,10 @@ permissions:
   # true时额外要求 jiujiucarry.entity.类型小写，如 jiujiucarry.entity.cow。
   per-entity: false
 messages:
+  receive-ride-on: '&b允许别人骑我：&a开启'
+  receive-ride-off: '&b允许别人骑我：&7关闭'
+  receive-carry-on: '&b允许别人抱起我：&a开启'
+  receive-carry-off: '&b允许别人抱起我：&7关闭'
   # 留空关闭对应提示；成功抱起仅一条简短提示，不额外发送长操作说明。
   prefix: ''
   picked-up: '&b抱起来了。'
@@ -96,6 +105,7 @@ messages:
   ride-rearm: ''
   sync-failed: '&e已下乘，本次未抛出。'
   too-large: '&e不能抱起这个生物。'
+  type-denied: '&e配置禁止抱起这种生物。'
   not-your-pet: '&e不能抱走别人的宠物。'
   disabled-world: '&e这里不能抱起。'
   no-permission: '&c没有权限。'
@@ -108,4 +118,4 @@ messages:
   reloaded: '&a配置已重载。'
   reload-failed: '&c配置有误，保留旧配置。'
   status: '&b互动：{state} &7| 抱起：{holding}'
-  help: '&b蹲下空手右键抱起 &7| &b右键方块/实体抛出 &7| &b双 Shift 放下'
+  help: '&b蹲下空手右键抱起 &7| &b右键抛出 &7| &b双 Shift 放下 &7| &b/dz 管理被骑和被抱起'
