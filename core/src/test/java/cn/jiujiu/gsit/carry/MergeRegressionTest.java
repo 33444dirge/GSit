@@ -113,7 +113,10 @@ public final class MergeRegressionTest {
             check(f.click(b,a),"two-player cap allows first rider");check(!f.click(c,a),"stack cap rejects excess rider");
             f.service.splitStackForTeleport(a);
             when(f.toggles.canPlayerUsePlayerSit(c.getUniqueId())).thenReturn(false);
-            check(!f.click(c,a),"GSit opt-out blocks ordinary riding");
+            check(f.click(c,a),"own incoming opt-out does not prevent riding others");
+            f.service.splitStackForTeleport(a);
+            when(f.toggles.canPlayerUsePlayerSit(a.getUniqueId())).thenReturn(false);
+            check(!f.click(b,a),"target opt-out blocks ordinary riding");
         }
     }
     static final class CarryFixture {
@@ -131,7 +134,7 @@ public final class MergeRegressionTest {
             YamlConfiguration yaml=new YamlConfiguration();yaml.load("resources/jiujiu-carry.yml");
             yaml.set("controls.hold-guard-ms",0);settings=new Settings(yaml,s->{});
             when(plugin.settings()).thenReturn(settings);when(plugin.getLogger()).thenReturn(Logger.getLogger("merge-test"));
-            when(plugin.accepts(any())).thenReturn(true);when(scheduler.owns(any())).thenReturn(true);
+            when(plugin.accepts(any())).thenReturn(true);when(plugin.acceptsCarry(any())).thenReturn(true);when(scheduler.owns(any())).thenReturn(true);
             when(scheduler.repeat(any(),any(),any(),anyLong())).thenReturn(mock(TaskScheduler.Handle.class));
             when(scheduler.later(any(),any(),any())).thenAnswer(i->{tasks.add(i.getArgument(1));return true;});
             when(scheduler.syncPosition(any())).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(true));
@@ -170,7 +173,7 @@ public final class MergeRegressionTest {
         f.runTasks();verify(f.target,never()).setVelocity(any());
         f=new CarryFixture();check(f.service.mountPlayers(f.actor,f.target),"third carry establishes");
         f.service.throwHeld(f.actor);f.runTasks();verify(f.target).setVelocity(any());check(!f.service.held(f.actor),"successful throw cleans session");
-        f=new CarryFixture();when(f.plugin.accepts(f.target)).thenReturn(false);check(!f.service.mountPlayers(f.actor,f.target),"opt-out blocks carry");
+        f=new CarryFixture();when(f.plugin.acceptsCarry(f.target)).thenReturn(false);check(!f.service.mountPlayers(f.actor,f.target),"pickup opt-out blocks carry");
         f=new CarryFixture();when(f.scheduler.owns(f.target)).thenReturn(false);check(!f.service.mountPlayers(f.actor,f.target),"foreign region blocks carry");
         f=new CarryFixture();check(f.service.pickup(f.actor,f.mob),"allowed small mob can be carried");
         check(f.service.beforeTeleport(f.actor),"carrier teleport also detaches original mob");check(f.vehicle.get()==null,"mob remains behind");
@@ -219,5 +222,5 @@ public final class MergeRegressionTest {
         }
         for(String name:List.of("dev.geco.gsit.GSitMain","dev.geco.gsit.event.PlayerSitEventHandler","dev.geco.gsit.event.SitEventHandler","dev.geco.gsit.service.TaskService")) Class.forName(name,false,MergeRegressionTest.class.getClassLoader());
     }
-    public static void main(String[]args)throws Exception {stacks();carry();commandAndMenu();jar();checks+=StrictRegressionTest.run();checks+=MenuRegressionTest.run();checks+=dev.geco.gsit.service.UpdateRegressionTest.run();checks+=dev.geco.gsit.service.UpstreamAlignmentTest.run();System.out.println("PASS "+checks+" behavioral checks");}
+    public static void main(String[]args)throws Exception {stacks();carry();commandAndMenu();jar();checks+=StrictRegressionTest.run();checks+=MenuRegressionTest.run();checks+=CarryInputRegressionTest.run();checks+=CarryProtocolLayoutTest.run();checks+=MobCarryRegressionTest.run();checks+=cn.jiujiu.gsit.ActionMenuDefaultsTest.run();checks+=dev.geco.gsit.service.UpdateRegressionTest.run();checks+=dev.geco.gsit.service.UpstreamAlignmentTest.run();checks+=dev.geco.gsit.service.ReceivePreferenceTest.run();System.out.println("PASS "+checks+" behavioral checks");}
 }

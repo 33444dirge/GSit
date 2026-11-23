@@ -97,7 +97,7 @@ public class PlayerSitEventHandler implements Listener {
         boolean isNPC = isPlayerNPC(highestPlayer);
         if((isNPC && !gSitMain.getConfigService().PS_ALLOW_SIT_NPC) || (!isNPC && !gSitMain.getConfigService().PS_ALLOW_SIT)) return;
 
-        if(!gSitMain.getToggleService().canPlayerUsePlayerSit(player.getUniqueId()) || !gSitMain.getToggleService().canPlayerUsePlayerSit(highestPlayer.getUniqueId())) return;
+        if(!gSitMain.getToggleService().canPlayerUsePlayerSit(target.getUniqueId()) || !gSitMain.getToggleService().canPlayerUsePlayerSit(highestPlayer.getUniqueId())) return;
 
         if(gSitMain.getPlayerSitService().sitOnPlayer(player, highestPlayer)) event.setCancelled(true);
     }

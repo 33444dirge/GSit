@@ -47,7 +47,7 @@ public final class ToggleStrictTest {
             check(service.isReady(), "valid rows load despite invalid data");
             if (nullRow) check(!service.canPlayerUsePlayerSit(id), "valid opt-out row still loaded");
             for (Statement statement : statements) verify(statement).close();
-            check(statements.size() == 3, "all three preference queries close statements");
+            check(statements.size() == 4, "all four preference queries close statements");
         } finally { stopWorker(service); }
     }
     static void closeOutsideLock() throws Exception {

@@ -11,9 +11,20 @@ background: WHITE_STAINED_GLASS_PANE
 # 菜单权限不替代 GSit 各动作权限；留空代表不检查此项权限。
 permission: gsit.menu
 auto-permission: gsit.menu.auto
+# 两个被动互动开关额外权限；留空时只要求上方菜单权限。
+interaction-permission: ''
+states:
+  'on': '&a已开启'
+  'off': '&7已关闭'
+  loading: '&e读取中'
 # 按钮点击冷却，单位毫秒，范围 0~60000。
 cooldown-ms: 400
 messages:
+  storage-wait: '&#A8DCFF设置暂未保存，请稍后再试。'
+  receive-ride-on: '&#87D0FF现在允许别人骑你。'
+  receive-ride-off: '&#87D0FF已禁止别人骑你，抱起设置不变。'
+  receive-carry-on: '&#87D0FF现在允许别人抱起你。'
+  receive-carry-off: '&#87D0FF已禁止别人抱起你，骑乘设置不变。'
   disabled: '&#A8DCFF动作菜单暂未开放。'
   denied: '&#A8DCFF你还没有使用这个功能的权限。'
   auto-off: '&#87D0FF已关闭右键方块坐下和自动爬行，手动动作仍然能用。'
@@ -21,6 +32,31 @@ messages:
 # 每个按钮可单独关闭；槽位不可重复。材质填写 Bukkit 材质名称。
 # name 为名称，lore 为说明。动作权限由 GSit 自身检查，不授予管理权限。
 buttons:
+  # 两个开关分别保存，重登/重启后保留；{state}显示自己的当前设置。
+  receive-ride:
+    enabled: true
+    slot: 38
+    material: SADDLE
+    on-material: LIME_DYE
+    off-material: GRAY_DYE
+    name: '&#72C7FF允许别人骑我 &8| {state}'
+    lore:
+      - ''
+      - '&#A8DCFF决定其他玩家能否骑在你身上。'
+      - '&#A8DCFF不影响你骑别人，也不影响被抱起。'
+      - '&#C8EDFF点击切换'
+  receive-carry:
+    enabled: true
+    slot: 42
+    material: LEAD
+    on-material: LIME_DYE
+    off-material: GRAY_DYE
+    name: '&#72C7FF允许别人抱起我 &8| {state}'
+    lore:
+      - ''
+      - '&#A8DCFF决定其他玩家能否蹲下右键抱起你。'
+      - '&#A8DCFF不影响你抱别人，也不影响被骑。'
+      - '&#C8EDFF点击切换'
   sit:
     enabled: true
     slot: 11

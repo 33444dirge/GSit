@@ -28,7 +28,9 @@ final class CarryService {
         final boolean players;
         final AtomicBoolean closed = new AtomicBoolean();
         final AtomicBoolean cleanupQueued = new AtomicBoolean();
+        final AtomicBoolean unexpectedDismountLogged = new AtomicBoolean();
         final AtomicReference<TaskScheduler.Handle> task = new AtomicReference<>();
+        final AtomicReference<CarryInput> input = new AtomicReference<>();
         long lastSneak;
         boolean mounting;
         volatile boolean exiting;
@@ -40,6 +42,14 @@ final class CarryService {
         void install(TaskScheduler.Handle handle) {
             task.set(handle);
             if (closed.get() && handle != null) handle.cancel();
+        }
+        void installInput(CarryInput value) {
+            input.set(value);
+            // Disable/retirement may have closed the session while the packet target was being created.
+            if (closed.get()) {
+                CarryInput stale = input.getAndSet(null);
+                if (stale != null) stale.remove();
+            }
         }
     }
 
@@ -87,8 +97,10 @@ final class CarryService {
                 || p.getEyeLocation().toVector().distanceSquared(mob.getBoundingBox().getCenter()) > c.distance * c.distance
                 || !p.hasLineOfSight(mob)) return false;
         String type = mob.getType().name();
-        if (c.denied.contains(type) || (!c.allowed.isEmpty() && !c.allowed.contains(type))
-                || mob.getWidth() > c.maxWidth || mob.getHeight() > c.maxHeight) {
+        if (c.denied.contains(type) || (!c.allowed.isEmpty() && !c.allowed.contains(type))) {
+            plugin.message(p, "type-denied"); return false;
+        }
+        if (mob.getWidth() > c.maxWidth || mob.getHeight() > c.maxHeight) {
             plugin.message(p, "too-large"); return false;
         }
         if (c.yaml.getBoolean("permissions.per-entity", false)
@@ -125,7 +137,7 @@ final class CarryService {
         if (!available(actor) || !available(target) || actor.getWorld() != target.getWorld()
                 || c.worlds.contains(actor.getWorld().getName())) return false;
         if (!c.playerHandsAllowed(actor, true)) return false;
-        if (!plugin.accepts(actor) || !plugin.accepts(target) || !c.playerPermission(target, "receive")) {
+        if (!plugin.acceptsCarry(target) || !c.playerPermission(target, "receive")) {
             plugin.message(actor, "player-refused"); return false;
         }
         if (actor.isInsideVehicle() || target.isInsideVehicle() || !actor.getPassengers().isEmpty()
@@ -167,7 +179,14 @@ final class CarryService {
             if (!mounted || s.closed.get() || s.exiting || mob.getVehicle() != p) {
                 abortEstablishment(s); return false;
             }
-            TaskScheduler.Handle handle = scheduler.repeat(p, () -> check(s), () -> forget(s), c.period);
+            s.installInput(plugin.createInput(p));
+            TaskScheduler.Handle handle = scheduler.repeat(p, () -> {
+                if (s.closed.get()) return;
+                CarryInput input = s.input.get();
+                if (input != null && !s.exiting) input.move(p.getEyeLocation());
+                // Input follows each tick; heavier session validation keeps its configured cadence.
+                if (input == null || p.getTicksLived() % c.period == 0) check(s);
+            }, () -> forget(s), s.input.get() == null ? c.period : 1);
             if (handle == null) { abortEstablishment(s); return false; }
             s.install(handle);
             boolean committed;
@@ -189,6 +208,7 @@ final class CarryService {
     }
 
     private void abortEstablishment(Session s) {
+        s.exiting = true;
         // A synchronous mount-event callback may have already closed the logical session.
         // Roll back the actual native relation even then; ordinary release intentionally ignores closed sessions.
         java.util.Set<UUID> ids = s.players ? java.util.Set.of(s.playerId, s.mobId) : java.util.Set.of(s.playerId);
@@ -228,7 +248,7 @@ final class CarryService {
         Player passenger = (Player)s.mob;
         return available(s.player) && available(passenger) && c.playerEnabled("carry")
                 && c.playerPermission(s.player, "carry") && c.playerPermission(passenger, "receive")
-                && plugin.accepts(s.player) && plugin.accepts(passenger);
+                && plugin.acceptsCarry(passenger);
     }
 
     void sneak(Player p) {
@@ -261,7 +281,7 @@ final class CarryService {
         direction.setY(Math.max(-3, Math.min(3, direction.getY() + c.lift)));
         if (s.mob.getVehicle() != p) { forget(s); return true; }
         // CraftEntity's boolean return does not prove dismount succeeded on 26.2.
-        s.exiting = s.players;
+        s.exiting = true;
         protectRelease(s);
         p.removePassenger(s.mob);
         if (s.mob.getVehicle() == p) {
@@ -327,7 +347,7 @@ final class CarryService {
             }
             return;
         }
-        s.exiting = s.players;
+        s.exiting = true;
         protectRelease(s);
         if (!detachOwned(s)) {
             s.exiting = false;
@@ -432,10 +452,13 @@ final class CarryService {
     }
 
     void forget(Session s) {
-        s.closed.set(true);
+        if (!s.closed.compareAndSet(false, true)) return;
         carriers.remove(s.playerId, s); carried.remove(s.mobId, s);
         TaskScheduler.Handle task = s.task.getAndSet(null);
         if (task != null) task.cancel();
+        CarryInput input = s.input.getAndSet(null);
+        // Network-only cleanup also works on retirement/disable; it never accesses live entity state.
+        if (input != null) input.remove();
     }
 
     void removed(Entity e) {

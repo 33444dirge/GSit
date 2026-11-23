@@ -40,8 +40,9 @@ final class MenuRegressionTest {
             when(server.getPluginCommand("jiujiulib:jjgui")).thenReturn(entry); when(entry.getPlugin()).thenReturn(gui);
             when(f.actor.performCommand(anyString())).thenReturn(true);
             when(toggles.canPlayerUsePlayerSit(any())).thenReturn(true);
+            when(toggles.canPlayerBeCarried(any())).thenReturn(true);
             when(toggles.canPlayerUsePlayerSit(f.actor.getUniqueId())).thenAnswer(i -> accepting.get());
-            when(toggles.trySetPlayerCanUsePlayerSit(eq(f.actor.getUniqueId()), anyBoolean())).thenAnswer(i -> {
+            when(toggles.trySetPlayerInteraction(eq(f.actor.getUniqueId()), anyBoolean())).thenAnswer(i -> {
                 accepting.set(i.getArgument(1)); return true;
             });
             for (Player p : List.of(f.actor, f.target)) when(p.getPersistentDataContainer()).thenReturn(mock(PersistentDataContainer.class));
@@ -51,6 +52,8 @@ final class MenuRegressionTest {
             field(f.plugin,"migrated",Objects.requireNonNull(NamespacedKey.fromString("gsit:jiujiu-interaction-migrated")));
             doCallRealMethod().when(f.plugin).onCommand(any(),any(),anyString(),any());
             doCallRealMethod().when(f.plugin).accepts(any());
+            doCallRealMethod().when(f.plugin).acceptsRide(any());
+            doCallRealMethod().when(f.plugin).acceptsCarry(any());
             doCallRealMethod().when(f.plugin).message(any(),anyString());
             doCallRealMethod().when(f.plugin).onTabComplete(any(),any(),anyString(),any());
         }
@@ -108,7 +111,7 @@ final class MenuRegressionTest {
         x.command("sq","status"); check(x.messages().getLast().contains("互动：开"),"status reads actual enabled state");
         x.command("sq","help"); verify(x.f.actor,never()).performCommand(anyString()); check(true,"help remains direct command");
 
-        x=new Fixture(); when(x.toggles.trySetPlayerCanUsePlayerSit(any(),anyBoolean())).thenReturn(false);
+        x=new Fixture(); when(x.toggles.trySetPlayerInteraction(any(),anyBoolean())).thenReturn(false);
         x.command("sq","off"); verify(x.sit,never()).stopPlayerSit(any(),any());
         check(x.accepting.get()&&x.messages().equals(List.of("稍后再试。")),"storage not ready never reports false success");
 

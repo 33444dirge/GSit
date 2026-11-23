@@ -16,7 +16,7 @@ commands:
     aliases: [dz, actions]
   jiujiuqi:
     description: 抱起与互动
-    usage: /carry [menu|help|on|off|toggle|down|drop|status|reload]
+    usage: /carry [menu|help|on|off|toggle|ride|pickup|down|drop|status|reload]
     aliases: [sq, hr, ride, headride, jiujiucarry, carry, baobao]
   gsit:
     usage: /<command> [toggle|playertoggle]

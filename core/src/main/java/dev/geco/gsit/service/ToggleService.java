@@ -10,9 +10,9 @@ import java.util.concurrent.*;
 import java.util.logging.Level;
 
 public class ToggleService {
-    private static final String[] TABLES = {"gsit_sit_toggle", "gsit_player_toggle", "gsit_crawl_toggle"};
+    private static final String[] TABLES = {"gsit_sit_toggle", "gsit_player_toggle", "gsit_crawl_toggle", "gsit_carry_toggle"};
     private final GSitMain main;
-    private final List<Set<UUID>> exceptions = List.of(ConcurrentHashMap.newKeySet(), ConcurrentHashMap.newKeySet(), ConcurrentHashMap.newKeySet());
+    private final List<Set<UUID>> exceptions = List.of(ConcurrentHashMap.newKeySet(), ConcurrentHashMap.newKeySet(), ConcurrentHashMap.newKeySet(), ConcurrentHashMap.newKeySet());
     private record Change(int kind, UUID id) {}
     private final Map<Change, Boolean> pending = new LinkedHashMap<>();
     private final Object lock = new Object();
@@ -32,6 +32,14 @@ public class ToggleService {
     private void initialize() throws SQLException {
         database = new DataService(main);
         if (!database.connect()) throw new SQLException("Could not connect GSit preference storage");
+        // Copy old opt-outs exactly once before accepting any changes; later switches are independent.
+        database.execute("CREATE TABLE IF NOT EXISTS gsit_player_toggle (uuid TEXT);");
+        database.execute("CREATE TABLE IF NOT EXISTS gsit_carry_toggle (uuid TEXT);");
+        database.execute("CREATE TABLE IF NOT EXISTS gsit_jiujiu_migrations (uuid TEXT);");
+        if (!database.exists("SELECT uuid FROM gsit_jiujiu_migrations WHERE uuid = ?", "split-receive-v1")) {
+            database.execute("INSERT INTO gsit_carry_toggle (uuid) SELECT uuid FROM gsit_player_toggle WHERE uuid NOT IN (SELECT uuid FROM gsit_carry_toggle WHERE uuid IS NOT NULL)");
+            database.execute("INSERT INTO gsit_jiujiu_migrations (uuid) VALUES (?)", "split-receive-v1");
+        }
         for(int i=0;i<TABLES.length;i++) {
             String table=TABLES[i];
             database.execute("CREATE TABLE IF NOT EXISTS "+table+" (uuid TEXT);");
@@ -91,11 +99,22 @@ public class ToggleService {
     public void clearEntitySitToggleCache(UUID id) { /* Entries here are persistent preferences, not online-player references. */ }
     private boolean defaultValue(int kind) {
         ConfigService c=main.getConfigService();
-        return switch(kind){case 0 -> c.S_DEFAULT_SIT_MODE;case 1 -> c.PS_DEFAULT_SIT_MODE;default -> c.C_DEFAULT_CRAWL_MODE;};
+        return switch(kind){case 0 -> c.S_DEFAULT_SIT_MODE;case 1, 3 -> c.PS_DEFAULT_SIT_MODE;default -> c.C_DEFAULT_CRAWL_MODE;};
     }
     private boolean get(int kind,UUID id) { return ready && (defaultValue(kind) != exceptions.get(kind).contains(id)); }
     public boolean canEntityUseSit(UUID id) { Boolean auto=ActionMenu.autoOverride(id);return auto!=null?auto:get(0,id); }
     public boolean canPlayerUsePlayerSit(UUID id) { return get(1,id); }
+    public boolean canPlayerBeCarried(UUID id) { return get(3,id); }
+    public boolean trySetPlayerCanBeCarried(UUID id,boolean value) { return set(3,id,value); }
+    /** Legacy combined controls remain atomic and update both incoming preferences. */
+    public boolean trySetPlayerInteraction(UUID id,boolean value) {
+        synchronized(lock) {
+            int needed = (pending.containsKey(new Change(1,id)) ? 0 : 1)
+                    + (pending.containsKey(new Change(3,id)) ? 0 : 1);
+            if(!ready || closing || pending.size()+needed>512) return false;
+            return set(1,id,value) && set(3,id,value);
+        }
+    }
     public boolean canPlayerUseCrawl(UUID id) { Boolean auto=ActionMenu.autoOverride(id);return auto!=null?auto:get(2,id); }
     private boolean set(int kind,UUID id,boolean value) {
         boolean exception=value!=defaultValue(kind);Change key=new Change(kind,id);

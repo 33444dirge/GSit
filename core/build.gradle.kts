@@ -34,6 +34,7 @@ publishing {
 dependencies {
     compileOnly(files(rootProject.file("native-api/shiroha-api-26.2-SNAPSHOT.jar")))
     testImplementation("org.mockito:mockito-core:5.21.0")
+    testImplementation("org.xerial:sqlite-jdbc:3.50.3.0")
 }
 configurations.testImplementation { extendsFrom(configurations.compileOnly.get()) }
 val mockitoAgent = configurations.create("mockitoAgent")
